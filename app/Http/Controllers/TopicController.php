@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Topic;
 use App\Models\Article;
+use App\Models\Source;
+use Illuminate\Support\Facades\DB;
 
 class TopicController extends Controller
 {
@@ -29,14 +31,20 @@ class TopicController extends Controller
             'negative' => $topic->articles()->where('sentiment_label', 'negative')->count(),
         ];
 
-        $topSources = $topic->articles()
-            ->select('source_id')
-            ->selectRaw('count(*) as cnt')
-            ->groupBy('source_id')
+        $topSourceIds = DB::table('articles')
+            ->join('article_topic', 'articles.id', '=', 'article_topic.article_id')
+            ->where('article_topic.topic_id', $topic->id)
+            ->select('articles.source_id', DB::raw('count(*) as cnt'))
+            ->groupBy('articles.source_id')
             ->orderByDesc('cnt')
             ->limit(5)
-            ->with('source')
             ->get();
+
+        $sourceModels = Source::whereIn('id', $topSourceIds->pluck('source_id'))->get()->keyBy('id');
+        $topSources = $topSourceIds->map(function ($row) use ($sourceModels) {
+            $row->source = $sourceModels->get($row->source_id);
+            return $row;
+        });
 
         return view('topics.show', compact('topic', 'articles', 'sentimentBreakdown', 'topSources'));
     }
